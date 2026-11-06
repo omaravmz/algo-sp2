@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <queue>
 #include <string>
 #include <climits>
 #include <cmath>
@@ -54,9 +55,9 @@ vector<Point> readPoints(ifstream &in, int n) {
 // ALGORITHMS
 
 // ---------------------------------------------------------
-// Parte 1: Cableado optimo con fibra optica
-// (Arbol de expansion minima / MST - Minimum Spanning Tree)
-// Regresa la lista de aristas (u, v) que forman el cableado.
+// Part 1: Optimal fiber optic wiring
+// (MST - Minimum Spanning Tree)
+// Returns the list of edges (u, v) that form the wiring.
 // ---------------------------------------------------------
 
 /*
@@ -122,12 +123,83 @@ vector<int> travelingSalesman(const vector<vector<int>> &dist) {
 }
 
 // ---------------------------------------------------------
-// Parte 3: Flujo maximo del nodo inicial al nodo final
-// Regresa el valor del flujo maximo.
+// Part 3: Maximum information flow from the initial node
+// to the final node (Ford-Fulkerson with BFS / Edmonds-Karp)
 // ---------------------------------------------------------
-int maxFlow(const vector<vector<int>> &capacity, int source, int sink) {
-    int flow = 0;
-    // TODO: implementar
+
+/*
+    BFS over the residual graph, only through edges with residual > 0.
+    Saves in parent[v] the node from which v was reached, so the
+    augmenting path can be rebuilt from the sink back to the source.
+
+    Time complexity: O(V^2). Every node enters the queue at most once,
+    and for each one the full row of the matrix (V entries) is scanned.
+    Space complexity: O(V) for the queue and the parent vector.
+*/
+
+bool bfs(const vector<vector<long long>> &residual, int source, int sink, vector<int> &parent) {
+    int n = residual.size();
+    parent.assign(n, -1);   // -1 means not visited
+    queue<int> q;
+    q.push(source);
+    parent[source] = source;
+
+    while (!q.empty()) {
+        int u = q.front();
+        q.pop();
+
+        for (int v = 0; v < n; v++) {
+            if (residual[u][v] > 0 && parent[v] == -1) {
+                parent[v] = u;
+                if (v == sink) return true;
+                q.push(v);
+            }
+        }
+    }
+
+    return false;
+}
+
+/*
+    Ford-Fulkerson using BFS to find augmenting paths (Edmonds-Karp).
+    The capacity matrix is copied into a residual matrix. Pushing flow
+    along u -> v decreases residual[u][v] and increases residual[v][u],
+    so the reverse edges are handled by the matrix itself.
+
+    Time complexity: O(V * E^2). With BFS there are at most O(V * E)
+    augmenting paths, and each one costs O(V^2) for the BFS on the
+    matrix plus O(V) to walk the path back. Since the input is an
+    N x N matrix, E can be up to V^2, which makes it O(V^5) in the
+    worst case, although in practice far fewer paths are needed.
+    Space complexity: O(V^2) for the residual matrix.
+*/
+
+long long maxFlow(const vector<vector<long long>> &capacity, int source, int sink) {
+    if (source == sink) return 0;
+
+    vector<vector<long long>> residual = capacity;
+    vector<int> parent;
+    long long flow = 0;
+
+    while (bfs(residual, source, sink, parent)) {
+        long long bottleneck = LLONG_MAX;
+
+        // find the smallest residual capacity on the path
+        for (int v = sink; v != source; v = parent[v]) {
+            int u = parent[v];
+            bottleneck = min(bottleneck, residual[u][v]);
+        }
+
+        // push the flow and update the reverse direction
+        for (int v = sink; v != source; v = parent[v]) {
+            int u = parent[v];
+            residual[u][v] -= bottleneck;
+            residual[v][u] += bottleneck;
+        }
+
+        flow += bottleneck;
+    }
+
     return flow;
 }
 
