@@ -23,7 +23,7 @@ struct Point {
 struct Edge {
     int u;
     int v;
-    int weight;
+    long long weight;
 };
 
 // Utilities
@@ -58,9 +58,54 @@ vector<Point> readPoints(ifstream &in, int n) {
 // (Arbol de expansion minima / MST - Minimum Spanning Tree)
 // Regresa la lista de aristas (u, v) que forman el cableado.
 // ---------------------------------------------------------
-vector<Edge> minimumSpanningTree(const vector<vector<int>> &dist) {
+
+/*
+    Prim's algorithm (adjacency matrix version).
+    Returns parent[v] = the node v is connected to in the tree
+    (-1 for the root or for nodes that could not be connected).
+
+    A distance of 0 outside the diagonal is treated as
+    "no wiring is possible between those neighborhoods".
+
+    Time complexity: O(n^2). There are n iterations, and in each one
+    the n nodes are scanned twice (once to pick the closest node
+    outside the tree and once to update the keys).
+    Space complexity: O(n) for the parent, key and inTree arrays.
+*/
+
+vector<int> primMST(const vector<vector<long long>> &D) {
+    int n = D.size();
+    vector<int> parent(n, -1);
+    vector<long long> key(n, LLONG_MAX);
+    vector<bool> inTree(n, false);
+    key[0] = 0;
+ 
+    for (int it = 0; it < n; it++) {
+        int v = -1;
+        for (int u = 0; u < n; u++)
+            if (!inTree[u] && (v == -1 || key[u] < key[v])) v = u;
+        inTree[v] = true;
+ 
+        for (int u = 0; u < n; u++) {
+            if (!inTree[u] && D[v][u] > 0 && D[v][u] < key[u]) {
+                key[u] = D[v][u];
+                parent[u] = v;
+            }
+        }
+    }
+ 
+    return parent;
+}
+ 
+// Convierte el arreglo parent de Prim a una lista de aristas (u, v)
+vector<Edge> minimumSpanningTree(const vector<vector<long long>> &dist) {
     vector<Edge> result;
-    // TODO: implementar
+    vector<int> parent = primMST(dist);
+    for (int v = 0; v < (int)dist.size(); v++) {
+        if (parent[v] != -1) {
+            result.push_back({parent[v], v, dist[parent[v]][v]});
+        }
+    }
     return result;
 }
 
