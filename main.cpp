@@ -11,6 +11,7 @@
 #include <string>
 #include <climits>
 #include <cmath>
+#include <algorithm>
 
 using namespace std;
 
@@ -208,9 +209,80 @@ long long maxFlow(const vector<vector<long long>> &capacity, int source, int sin
 // Regresa una lista de poligonos; el poligono i contiene
 // la zona del plano mas cercana a la central i.
 // ---------------------------------------------------------
+struct HalfPlane{
+    double a, b, c;
+};
+
+HalfPlane makeHalfPlane(const Point &p1, const Point &p2) {
+    HalfPlane hp;
+    hp.a = p2.x - p1.x;
+    hp.b = p2.y - p1.y;
+    double mx = (p1.x + p2.x) / 2.0;
+    double my = (p1.y + p2.y) / 2.0;
+    hp.c = -(hp.a * mx + hp.b * my);
+    return hp;
+}
+
+double evaluateHalfPlane(const HalfPlane &hp, const Point &p) {
+    return hp.a * p.x + hp.b * p.y + hp.c;
+}
+
+Point intersection(const Point &p1, const Point &p2, double f1, double f2) {
+    double t = f1 / (f1 - f2);
+    Point p;
+    p.x = p1.x + t * (p2.x - p1.x);
+    p.y = p1.y + t * (p2.y - p1.y);
+    return p;
+}
+
+vector<Point> cutPolygon(const vector<Point> &polygon, const HalfPlane &hp) {
+    vector<Point> result;
+    int n = polygon.size();
+    for(int i = 0; i < n; i++){
+        const Point &p1 = polygon[i];
+        const Point &p2 = polygon[(i + 1) % n];
+        double f1 = evaluateHalfPlane(hp, p1);
+        double f2 = evaluateHalfPlane(hp, p2);
+
+        if(f1 <= 0) result.push_back(p1);
+        if(f1 * f2 < 0) result.push_back(intersection(p1, p2, f1, f2));
+    }
+    return result;
+}
+
 vector<vector<Point>> closestRegions(const vector<Point> &centrals) {
     vector<vector<Point>> polygons;
-    // TODO: implementar
+    int n = centrals.size();
+    if(n == 0) return polygons;
+
+    double minX = centrals[0].x, maxX = centrals[0].x;
+    double minY = centrals[0].y, maxY = centrals[0].y;
+    for(int i = 1; i < n; i++) {
+        minX = min(minX, centrals[i].x);
+        maxX = max(maxX, centrals[i].x);
+        minY = min(minY, centrals[i].y);
+        maxY = max(maxY, centrals[i].y);
+    }
+    double margin = max(maxX - minX, maxY - minY);
+    if (margin == 0) margin = 1;
+    
+    vector<Point> boundingBox = {
+        {minX - margin, minY - margin},
+        {maxX + margin, minY - margin},
+        {maxX + margin, maxY + margin},
+        {minX - margin, maxY + margin}
+    };
+
+    for(int i = 0; i < n; i++) {
+        vector<Point> polygon = boundingBox;
+        for(int j = 0; j < n; j++) {
+            if(i == j) continue;
+            HalfPlane hp = makeHalfPlane(centrals[i], centrals[j]);
+            polygon = cutPolygon(polygon, hp);
+        }
+        polygons.push_back(polygon);
+    }
+    
     return polygons;
 }
 
