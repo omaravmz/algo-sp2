@@ -301,7 +301,7 @@ long long maxFlow(const vector<vector<long long>> &capacity, int source, int sin
 // Encargado: Diego Rodríguez
 // NOTAS: During the development of this algorithm I used Claude to help me understand and resolve doubts about this naive solution of voronoi, also it acted as a guide during the process
 // since we saw the topic today 10/11/2026. I understand that there is a better solution in terms of complexity
-// but since there is not much time left I will leave this solution as it is, since it is a naive solution that works and is one of the solutions that we saw in class. 
+// but since there is not much time left I will leave this solution as it is, since it is one of the solutions that we saw in class. 
 // ---------------------------------------------------------
 struct HalfPlane{
     double a, b, c;
