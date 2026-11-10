@@ -35,8 +35,8 @@ char toLetter(int i) {
     return 'A' + i;
 }
 
-vector<vector<int>> readMatrix(ifstream &in, int n) {
-    vector<vector<int>> m(n, vector<int>(n));
+vector<vector<long long>> readMatrix(ifstream &in, int n) {
+    vector<vector<long long>> m(n, vector<long long>(n));
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             in >> m[i][j];
@@ -47,7 +47,7 @@ vector<vector<int>> readMatrix(ifstream &in, int n) {
 
 vector<Point> readPoints(ifstream &in, int n) {
     vector<Point> pts(n);
-    char c; // para leer '(' ',' ')'
+    char c; // used to read '(' ',' ')'
     for (int i = 0; i < n; i++) {
         in >> c >> pts[i].x >> c >> pts[i].y >> c;
     }
@@ -82,13 +82,13 @@ vector<int> primMST(const vector<vector<long long>> &D) {
     vector<long long> key(n, LLONG_MAX);
     vector<bool> inTree(n, false);
     key[0] = 0;
- 
+
     for (int it = 0; it < n; it++) {
         int v = -1;
         for (int u = 0; u < n; u++)
             if (!inTree[u] && (v == -1 || key[u] < key[v])) v = u;
         inTree[v] = true;
- 
+
         for (int u = 0; u < n; u++) {
             if (!inTree[u] && D[v][u] > 0 && D[v][u] < key[u]) {
                 key[u] = D[v][u];
@@ -96,11 +96,11 @@ vector<int> primMST(const vector<vector<long long>> &D) {
             }
         }
     }
- 
+
     return parent;
 }
- 
-// Convierte el arreglo parent de Prim a una lista de aristas (u, v)
+
+// Converts Prim's parent array into a list of edges (u, v)
 vector<Edge> minimumSpanningTree(const vector<vector<long long>> &dist) {
     vector<Edge> result;
     vector<int> parent = primMST(dist);
@@ -112,17 +112,106 @@ vector<Edge> minimumSpanningTree(const vector<vector<long long>> &dist) {
     return result;
 }
 
-// ---------------------------------------------------------
-// Parte 2: Ruta mas corta que visita cada colonia una vez
-// y regresa al origen (TSP - Traveling Salesman Problem)
-// Regresa la ruta como lista de indices, empezando y
-// terminando en 0 (A).
-// ---------------------------------------------------------
-vector<int> travelingSalesman(const vector<vector<int>> &dist) {
-    vector<int> route;
-    // TODO: implementar
-    return route;
+// Union-Find: returns the root of the group a city belongs to
+// (with path compression).
+int findRoot(vector<int> &parent, int city) {
+	int root = city;
+	while (parent[root] != root) {
+		root = parent[root];
+	}
+	while (parent[city] != root) {
+		int next = parent[city];
+		parent[city] = root;
+		city = next;
+	}
+	return root;
 }
+
+// ---------------------------------------------------------
+// Part 2: Shortest route that visits each neighborhood once
+// and returns to the origin (TSP - Traveling Salesman Problem)
+// Returns the route as a list of indices, starting and
+// ending at 0 (A).
+// ---------------------------------------------------------
+
+/*
+    Cheapest-Link heuristic: edges are sorted by weight and added from
+    cheapest to most expensive, as long as neither neighborhood already
+    has 2 neighbors and the edge does not close a cycle too early
+    (checked with Union-Find). The resulting path is the delivery route.
+
+    Time complexity: O(n^2 log n), from sorting the ~n^2/2 edges.
+    Space complexity: O(n^2) for the edge list.
+*/
+
+vector<int> travelingSalesman(const vector<vector<long long>> &dist) {
+	vector<int> tour;
+	int cityCount = dist.size();
+	if (cityCount == 0) {
+		return tour;
+	}
+
+	vector<pair<long long, pair<int, int>>> edges;
+	for (int first = 0; first < cityCount; first++) {
+		for (int second = first + 1; second < cityCount; second++) {
+			edges.push_back({dist[first][second], {first, second}});
+		}
+	}
+	sort(edges.begin(), edges.end());
+
+	vector<int> parent(cityCount, 0);
+	for (int i = 0; i < cityCount; i++) {
+		parent[i] = i;
+	}
+	vector<vector<int>> neighbors(cityCount);
+	int edgesAdded = 0;
+	size_t edgeIndex = 0;
+	while (edgesAdded < cityCount - 1 && edgeIndex < edges.size()) {
+		int first = edges[edgeIndex].second.first;
+		int second = edges[edgeIndex].second.second;
+		if (neighbors[first].size() < 2 && neighbors[second].size() < 2) {
+			int firstRoot = findRoot(parent, first);
+			int secondRoot = findRoot(parent, second);
+			if (firstRoot != secondRoot) {
+				parent[firstRoot] = secondRoot;
+				neighbors[first].push_back(second);
+				neighbors[second].push_back(first);
+				edgesAdded++;
+			}
+		}
+		edgeIndex++;
+	}
+
+	int start = 0;
+	while (neighbors[start].size() == 2) {
+		start++;
+	}
+	int previous = -1;
+	int current = start;
+	while (current != -1) {
+		tour.push_back(current);
+		int next = -1;
+		for (size_t i = 0; i < neighbors[current].size(); i++) {
+			if (neighbors[current][i] != previous) {
+				next = neighbors[current][i];
+			}
+		}
+		previous = current;
+		current = next;
+	}
+
+	// Rotate so the route starts at A, then return to A to close the cycle
+	int zeroPosition = 0;
+	while (tour[zeroPosition] != 0) {
+		zeroPosition++;
+	}
+	rotate(tour.begin(), tour.begin() + zeroPosition, tour.end());
+	tour.push_back(0);
+
+	return tour;
+}
+
+
 
 // ---------------------------------------------------------
 // Part 3: Maximum information flow from the initial node
@@ -206,14 +295,14 @@ long long maxFlow(const vector<vector<long long>> &capacity, int source, int sin
 }
 
 // ---------------------------------------------------------
-// Parte 4: Region mas cercana a cada central
-// Regresa una lista de poligonos; el poligono i contiene
-// la zona del plano mas cercana a la central i.
+// Part 4: Closest region to each exchange
+// Returns a list of polygons; polygon i contains the area
+// of the plane closest to exchange i.
 // Encargado: Diego Rodríguez
 // NOTAS: During the development of this algorithm I used Claude to help me understand and resolve doubts about this naive solution of voronoi, also it acted as a guide during the process
 // since we saw the topic today 10/11/2026. I understand that there is a better solution in terms of complexity
 // but since there is not much time left I will leave this solution as it is, since it is a naive solution that works and is one of the solutions that we saw in class. 
-
+// ---------------------------------------------------------
 struct HalfPlane{
     double a, b, c;
 };
@@ -371,7 +460,7 @@ void printRoute(const vector<int> &route) {
     cout << endl << endl;
 }
 
-void printMaxFlow(int flow) {
+void printMaxFlow(long long flow) {
     cout << "3. Flujo maximo de informacion:" << endl;
     cout << flow << endl << endl;
 }
@@ -403,8 +492,8 @@ int main(int argc, char *argv[]) {
     int n;
     in >> n;
 
-    vector<vector<int>> dist = readMatrix(in, n);
-    vector<vector<int>> capacity = readMatrix(in, n);
+    vector<vector<long long>> dist = readMatrix(in, n);
+    vector<vector<long long>> capacity = readMatrix(in, n);
     vector<Point> centrals = readPoints(in, n);
 
     in.close();
@@ -418,7 +507,7 @@ int main(int argc, char *argv[]) {
     printRoute(route);
 
     // 3. Flujo maximo (nodo inicial = 0, nodo final = n - 1)
-    int flow = maxFlow(capacity, 0, n - 1);
+    long long flow = maxFlow(capacity, 0, n - 1);
     printMaxFlow(flow);
 
     // 4. Poligonos de cercania a centrales
