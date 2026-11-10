@@ -8,6 +8,7 @@
 #include <fstream>
 #include <vector>
 #include <queue>
+#include <deque>
 #include <string>
 #include <climits>
 #include <cmath>
@@ -208,7 +209,11 @@ long long maxFlow(const vector<vector<long long>> &capacity, int source, int sin
 // Parte 4: Region mas cercana a cada central
 // Regresa una lista de poligonos; el poligono i contiene
 // la zona del plano mas cercana a la central i.
-// ---------------------------------------------------------
+// Encargado: Diego Rodríguez
+// NOTAS: During the development of this algorithm I used Claude to help me understand and resolve doubts about this naive solution of voronoi, also it acted as a guide during the process
+// since we saw the topic today 10/11/2026. I understand that there is a better solution in terms of complexity
+// but since there is not much time left I will leave this solution as it is, since it is a naive solution that works and is one of the solutions that we saw in class. 
+
 struct HalfPlane{
     double a, b, c;
 };
@@ -227,29 +232,90 @@ double evaluateHalfPlane(const HalfPlane &hp, const Point &p) {
     return hp.a * p.x + hp.b * p.y + hp.c;
 }
 
-Point intersection(const Point &p1, const Point &p2, double f1, double f2) {
-    double t = f1 / (f1 - f2);
-    Point p;
-    p.x = p1.x + t * (p2.x - p1.x);
-    p.y = p1.y + t * (p2.y - p1.y);
-    return p;
+// This function was recomended by Claude to avoid problems with the atan2 function.
+double angleOf(const HalfPlane &hp) {
+    return atan2(hp.b + 0.0, hp.a);
 }
 
-vector<Point> cutPolygon(const vector<Point> &polygon, const HalfPlane &hp) {
-    vector<Point> result;
-    int n = polygon.size();
-    for(int i = 0; i < n; i++){
-        const Point &p1 = polygon[i];
-        const Point &p2 = polygon[(i + 1) % n];
-        double f1 = evaluateHalfPlane(hp, p1);
-        double f2 = evaluateHalfPlane(hp, p2);
+// Point where the borders of two half-planes cross
+Point lineIntersection(const HalfPlane &hp1, const HalfPlane &hp2) {
+    double det = hp1.a * hp2.b - hp2.a * hp1.b;
+    if (fabs(det) < 1e-12) return {NAN, NAN}; 
+    double x = (hp2.b * (-hp1.c) - hp1.b * (-hp2.c)) / det;
+    double y = (hp1.a * (-hp2.c) - hp2.a * (-hp1.c)) / det;
+    return {x, y};
+}
 
-        if(f1 <= 0) result.push_back(p1);
-        if(f1 * f2 < 0) result.push_back(intersection(p1, p2, f1, f2));
+/*
+    Signed distance from a point to the border of a half-plane (<= 0 is inside).
+
+    Time complexity: O(m log m), where m is the number of half-planes: the sort
+    is O(m log m) and every border enters and leaves the deque at most once.
+
+    Space complexity: O(m) for the sorted list and the deque.
+*/
+double distanceTo(const HalfPlane &hp, const Point &p) {
+    return evaluateHalfPlane(hp, p) / hypot(hp.a, hp.b);
+}
+
+vector<Point> halfPlaneIntersection(vector<HalfPlane> hps) {
+    const double EPS = 1e-9;
+    const double ANGLE_EPS = 1e-12;
+
+    // 1. Sort by angle
+    sort(hps.begin(), hps.end(), [](const HalfPlane &h1, const HalfPlane &h2) {
+        return angleOf(h1) < angleOf(h2);
+    });
+
+    vector<HalfPlane> sorted;
+    for (const HalfPlane &h : hps) {
+        if (h.a == 0 && h.b == 0) continue; // two sites in the same place
+        if (!sorted.empty() && fabs(angleOf(h) - angleOf(sorted.back())) < ANGLE_EPS) {
+            if (h.c / hypot(h.a, h.b) > sorted.back().c / hypot(sorted.back().a, sorted.back().b)) {
+                sorted.back() = h;
+            }
+        } else {
+            sorted.push_back(h);
+        }
     }
-    return result;
+
+    // 2. Double ended queue of half-planes
+    deque<HalfPlane> dq;
+    for (const HalfPlane &h : sorted) {
+        while (dq.size() >= 2 && distanceTo(h, lineIntersection(dq[dq.size() - 2], dq.back())) >= -EPS) {
+            dq.pop_back();
+        }
+        while (dq.size() >= 2 && distanceTo(h, lineIntersection(dq[0], dq[1])) >= -EPS) {
+            dq.pop_front();
+        }
+        dq.push_back(h);
+    }
+
+    // 3. Clean up the ends
+    while (dq.size() >= 3 && distanceTo(dq[0], lineIntersection(dq[dq.size() - 2], dq.back())) >= -EPS) {
+        dq.pop_back();
+    }
+    while (dq.size() >= 3 && distanceTo(dq.back(), lineIntersection(dq[0], dq[1])) >= -EPS) {
+        dq.pop_front();
+    }
+
+    // 4. Vertices
+    vector<Point> polygon;
+    if (dq.size() < 3) return polygon;
+    for (size_t k = 0; k < dq.size(); k++) {
+        polygon.push_back(lineIntersection(dq[k], dq[(k + 1) % dq.size()]));
+    }
+    return polygon;
 }
 
+/*
+    General complexities
+
+    Time complexity: O(n^2 log n). There are n sites and each one needs one
+    intersection of n + 3 half-planes, which costs O(n log n).
+
+    Space complexity: O(n) for the half-planes of one site, plus the output.
+*/
 vector<vector<Point>> closestRegions(const vector<Point> &centrals) {
     vector<vector<Point>> polygons;
     int n = centrals.size();
@@ -265,24 +331,24 @@ vector<vector<Point>> closestRegions(const vector<Point> &centrals) {
     }
     double margin = max(maxX - minX, maxY - minY);
     if (margin == 0) margin = 1;
-    
-    vector<Point> boundingBox = {
-        {minX - margin, minY - margin},
-        {maxX + margin, minY - margin},
-        {maxX + margin, maxY + margin},
-        {minX - margin, maxY + margin}
+
+    // The sides of the bounding box as half-planes
+    vector<HalfPlane> boxSides = {
+        { 1,  0, -(maxX + margin)},  
+        {-1,  0,   minX - margin},   
+        { 0,  1, -(maxY + margin)},  
+        { 0, -1,   minY - margin}    
     };
 
     for(int i = 0; i < n; i++) {
-        vector<Point> polygon = boundingBox;
+        vector<HalfPlane> hps = boxSides;
         for(int j = 0; j < n; j++) {
             if(i == j) continue;
-            HalfPlane hp = makeHalfPlane(centrals[i], centrals[j]);
-            polygon = cutPolygon(polygon, hp);
+            hps.push_back(makeHalfPlane(centrals[i], centrals[j]));
         }
-        polygons.push_back(polygon);
+        polygons.push_back(halfPlaneIntersection(hps));
     }
-    
+
     return polygons;
 }
 
